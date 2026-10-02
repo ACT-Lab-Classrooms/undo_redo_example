@@ -1,0 +1,29 @@
+:root {
+  color-scheme: light dark;
+  --bg: #fafafa;
+  --fg: #222;
+  --card: #fff;
+  --border: #d0d0d5;
+  --accent: #6c4cf1;
+  font-family: system-ui, Segoe UI, Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16161a;
+    --fg: #eee;
+    --card: #222228;
+    --border: #3a3a44;
+    --accent: #9a85ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
