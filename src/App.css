@@ -122,11 +122,6 @@ select:disabled {
   gap: 16px;
 }
 
-.history.pending .stacks {
-  opacity: 0.5;
-  transition: opacity 0.2s;
-}
-
 .history h2 {
   font-size: 1.1rem;
   margin: 0 0 8px;
@@ -152,15 +147,6 @@ select:disabled {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.history li.redone {
-  animation: history-redone 0.8s ease-out;
-}
-
-.history li.skipped {
-  opacity: 0.5;
-  font-style: italic;
-}
-
 .history .badge {
   margin-left: 8px;
   padding: 0 6px;
@@ -171,20 +157,7 @@ select:disabled {
   white-space: nowrap;
 }
 
-.history li.redone .badge {
-  border-color: var(--accent);
-}
-
 .history .muted {
   margin: 0;
   opacity: 0.6;
-}
-
-@keyframes history-redone {
-  from {
-    background: color-mix(in srgb, var(--accent) 55%, transparent);
-  }
-  to {
-    background: transparent;
-  }
 }

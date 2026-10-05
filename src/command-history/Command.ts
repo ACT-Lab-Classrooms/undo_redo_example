@@ -25,14 +25,6 @@ export interface Memento<S> {
      * @returns The state with the saved part restored. Must not mutate `state`.
      */
     applyToState(state: S): S
-
-    /**
-     * Tests whether the part of a state that this memento covers is still as it was when the memento was taken.
-     *
-     * @param state - The state to test.
-     * @returns `true` if the command that produced this memento would affect `state` the same way it affected the original state.
-     */
-    matchesState(state: S): boolean
 }
 
 /**
@@ -43,16 +35,12 @@ export interface Memento<S> {
 export class FullStateMemento<S> implements Memento<S> {
     /** The saved state. */
     private readonly state: S
-    /** How two states are compared by {@link FullStateMemento.matchesState}. */
-    private readonly equals: (a: S, b: S) => boolean
 
     /**
      * @param state - The state to save. It must not be modified afterwards (use immutable states).
-     * @param equals - How to compare two states. Defaults to reference equality; pass a value comparison for states that can be equal without being the same object.
      */
-    constructor(state: S, equals: (a: S, b: S) => boolean = Object.is) {
+    constructor(state: S) {
         this.state = state
-        this.equals = equals
     }
 
     /**
@@ -61,14 +49,6 @@ export class FullStateMemento<S> implements Memento<S> {
      */
     applyToState(_state: S): S {
         return this.state
-    }
-
-    /**
-     * @param state - The state to test.
-     * @returns `true` if `state` equals the saved state.
-     */
-    matchesState(state: S): boolean {
-        return this.equals(this.state, state)
     }
 }
 
@@ -109,26 +89,6 @@ export abstract class Command<S> {
     }
 
     /**
-     * Reports whether {@link Command.do} can meaningfully be applied to a state. Redo skips commands for which this is false.
-     *
-     * @param _state - The state the command would be applied to.
-     * @returns `true` if the command still applies. The default is always `true`.
-     */
-    canDo(_state: S): boolean {
-        return true
-    }
-
-    /**
-     * Whether this command can still be redone once the state has changed (for example after the user performs a new action).
-     *
-     * @param _currentState - The state a redo would start from.
-     * @returns `true` if the command can still be redone. By default always, because a plain command describes an action, not a state.
-     */
-    survivesStateChange(_currentState: S): boolean {
-        return true
-    }
-
-    /**
      * Describes what this command did, in enough detail to be clear in the user interface (tooltips and the History panel).
      *
      * @returns A past-tense, human-readable description such as `"Added bruce at position 2"`. Positions are 1-based.
@@ -140,9 +100,7 @@ export abstract class Command<S> {
  * A command whose undo is provided by a {@link Memento} of the part of the state it affects, so the subclass does not write an inverse.
  *
  * @remarks
- * The memento is created once, the first time the command runs. Redo runs {@link Command.action} again on the current state instead of replaying a stored result, which is only correct while the affected part of the state is as it was.
- * {@link CommandByMemento.canDo} and {@link CommandByMemento.survivesStateChange} check that with {@link Memento.matchesState}.
- * Because `do` records nothing after its first run, it has no side effects on later calls, so it is safe to call on a simulated state (the background pruning does).
+ * The memento is created once, the first time the command runs. Redo runs {@link Command.action} again on the current state, which is the same state the command first ran on, because undo and redo are strictly last-in-first-out.
  *
  * @typeParam S - The type of the state the command changes.
  * @typeParam M - The type of memento this command uses.
@@ -178,21 +136,5 @@ export abstract class CommandByMemento<S, M extends Memento<S>> extends Command<
      */
     override undo(state: S): S {
         return this.before ? this.before.applyToState(state) : state
-    }
-
-    /**
-     * @param state - The state the command would be applied to.
-     * @returns `true` if the command has not run yet, or the affected part of `state` is as it was when the memento was taken.
-     */
-    override canDo(state: S): boolean {
-        return this.before === undefined || this.before.matchesState(state)
-    }
-
-    /**
-     * @param currentState - The state a redo would start from.
-     * @returns `true` only if the command has run and the affected part of `currentState` is as it was when the memento was taken.
-     */
-    override survivesStateChange(currentState: S): boolean {
-        return this.before !== undefined && this.before.matchesState(currentState)
     }
 }

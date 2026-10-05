@@ -6,7 +6,7 @@ import {GalleryState} from "./GalleryState.ts";
  * Adds a cat at a position, with a handwritten inverse.
  *
  * @remarks
- * Undo removes the cat; redo re-inserts it at the same index. If the gallery has since become shorter the index is clamped, so the cat lands at the end.
+ * Undo removes the cat; redo re-inserts it at the same index.
  */
 export class AddCatCommand extends Command<GalleryState> {
     /** The cat to add. */
@@ -44,16 +44,6 @@ export class AddCatCommand extends Command<GalleryState> {
     override undo(state: GalleryState): GalleryState {
         return state.remove(this.id).state
     }
-
-    /**
-     * @param state - The gallery state the command would be applied to.
-     * @returns `true` if the cat is not already in the gallery.
-     */
-    override canDo(state: GalleryState): boolean {
-        return !state.includes(this.id)
-    }
-
-    // Redo re-inserts at the originally captured index (splice clamps it if the gallery is now shorter).
 
     /** @returns `"Added <cat> at position #"` (1-based) once the command has run, or `"Add <cat>"` before it has. */
     override toString(): string {
@@ -100,15 +90,6 @@ export class RemoveCatCommand extends Command<GalleryState> {
     override undo(state: GalleryState): GalleryState {
         return state.add(this.id, this.index)
     }
-
-    /**
-     * @param state - The gallery state the command would be applied to.
-     * @returns `true` if the cat is currently in the gallery.
-     */
-    override canDo(state: GalleryState): boolean {
-        return state.includes(this.id)
-    }
-
 
     /** @returns `"Removed <cat> from position #"` (1-based) once the command has run, or `"Remove <cat>"` before it has. */
     override toString(): string {

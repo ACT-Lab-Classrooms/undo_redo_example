@@ -1,8 +1,9 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useReducer, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { CatId } from '../cats.ts'
 import type { GalleryState } from '../gallery-commands/GalleryState.ts'
 import { CatElement } from './CatElement.tsx'
+import { galleryUiReducer, initialGalleryUiState } from './galleryUiReducer.ts'
 
 /** Props for {@link Gallery}. */
 interface GalleryProps {
@@ -31,25 +32,30 @@ interface GalleryProps {
  * Each {@link CatElement} just renders from two booleans and reports select/remove intents.
  * Clicking or focusing a card selects it. ArrowLeft/ArrowRight rotate the selection through the cats (wrapping around), ArrowUp/ArrowDown move the selected cat, and Delete/Backspace (or its ✕ button) removes it.
  * When a key is understood but nothing can happen (the cat is already at that end of the list, or it is the only cat), the selected card flashes so the user knows the key was received.
- * The component only reports reorder and remove intents through its callbacks; it never changes the gallery itself.
+ * The component never changes the gallery itself: it only reports remove and move intents through its callbacks.
+ * Its own view state (selection and flash) is a small reducer, see {@link galleryUiReducer}.
  *
  * @param props - See {@link GalleryProps}.
  * @returns The gallery list, or an empty-state message when there are no cats.
  */
 export function Gallery({ gallery, onRemove, onMove }: GalleryProps) {
-  const [selectedId, setSelectedId] = useState<CatId | null>(null)
-  // The card to flash because a key was received but could not do anything. `count` changes on every rejection so a repeated key press restarts the flash.
-  const [flash, setFlash] = useState<{ id: CatId; count: number } | null>(null)
+  const [{ selectedId, flash }, dispatch] = useReducer(galleryUiReducer, initialGalleryUiState)
   const listRef = useRef<HTMLUListElement>(null)
   // Set when the user's key press will change the gallery or the selection, so the selected card gets focus back afterwards (DOM reordering/removal can drop focus, and rotating moves it).
   const refocusSelected = useRef(false)
+  // The newest gallery, for callbacks that must stay the same function across renders (so memoized cards are not re-rendered) but need to look at the current gallery when they run.
+  const latestGallery = useRef(gallery)
 
   // Undo/redo can remove the selected cat, so derive rather than trust state.
   const selected: CatId | null = selectedId && gallery.includes(selectedId) ? selectedId : null
   // A flash belongs to one card: if its cat leaves the gallery mid-flash (its animation never ends), forget it so it does not replay when the cat comes back.
-  if (flash && !gallery.includes(flash.id)) setFlash(null)
+  if (flash && !gallery.includes(flash.id)) dispatch({ type: 'clearFlash' })
   // Roving tabindex: exactly one card is in the tab order.
-  const tabbable: CatId | null  = selected ?? gallery.at(0) ?? null
+  const tabbable: CatId | null = selected ?? gallery.at(0) ?? null
+
+  useLayoutEffect(() => {
+    latestGallery.current = gallery
+  }, [gallery])
 
   useLayoutEffect(() => {
     if (!refocusSelected.current) return
@@ -62,7 +68,7 @@ export function Gallery({ gallery, onRemove, onMove }: GalleryProps) {
    *
    * @param id - The cat to select.
    */
-  const select = useCallback((id: CatId) => setSelectedId(id), [])
+  const select = useCallback((id: CatId) => dispatch({ type: 'select', id }), [])
 
   /**
    * Requests removal of a cat and hands selection and focus to a neighbor.
@@ -70,26 +76,17 @@ export function Gallery({ gallery, onRemove, onMove }: GalleryProps) {
    * @param id - The cat to remove.
    */
   const remove = useCallback((id: CatId) => {
-    setSelectedId(gallery.neighborOf(id))
+    dispatch({ type: 'select', id: latestGallery.current.neighborOf(id) })
     refocusSelected.current = true
     onRemove(id)
-  }, [gallery, onRemove])
-
-  /**
-   * Flashes a card to show that a key press was received but nothing can be done.
-   *
-   * @param id - The cat whose card should flash.
-   */
-  function reject(id: CatId) {
-    setFlash((f) => ({ id, count: (f?.count ?? 0) + 1 }))
-  }
+  }, [onRemove])
 
   /**
    * Called when a card's flash animation has finished, so the flash is not replayed if the cat is removed and later brought back.
    *
    * @param id - The cat whose flash ended.
    */
-  const flashEnded = useCallback((id: CatId) => setFlash((f) => (f?.id === id ? null : f)), [])
+  const flashEnded = useCallback((id: CatId) => dispatch({ type: 'flashEnded', id }), [])
 
   /**
    * Handles keyboard shortcuts for the selected cat:
@@ -109,15 +106,15 @@ export function Gallery({ gallery, onRemove, onMove }: GalleryProps) {
       e.preventDefault()
       const direction = e.key === 'ArrowUp' ? -1 : 1
       // A move at the edge changes nothing, so there is nothing to refocus after.
-      if (gallery.move(selected, direction) === gallery) return reject(selected)
+      if (gallery.move(selected, direction) === gallery) return dispatch({ type: 'reject', id: selected })
       refocusSelected.current = true
       onMove(selected, direction)
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault()
       const next = gallery.cycleFrom(selected, e.key === 'ArrowLeft' ? -1 : 1)
-      if (!next) return reject(selected)
+      if (!next) return dispatch({ type: 'reject', id: selected })
       refocusSelected.current = true
-      setSelectedId(next)
+      dispatch({ type: 'select', id: next })
     }
   }
 

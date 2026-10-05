@@ -1,3 +1,4 @@
+import {useId} from "react";
 import type {Cat, CatId} from "../cats.ts";
 
 /** Props for {@link CatToolBar}. */
@@ -24,17 +25,19 @@ interface CatToolBarProps {
  * The add-a-cat menu and the Undo/Redo buttons.
  *
  * @remarks
- * Purely presentational: it holds no state and reports the user's intent through callbacks.
+ * Purely presentational: it holds no state and reports the user's intent through callbacks. `useId` gives the menu a label whose id is unique on the page.
  *
  * @param props - See {@link CatToolBarProps}.
  * @returns The toolbar.
  */
 export function CatToolBar({available, undoLabel, redoLabel, onAdd, onUndo, onRedo}: CatToolBarProps) {
+    const selectId = useId()
     return (
         <div className="toolbar">
+            <label htmlFor={selectId}>Add:</label>
             {/* Always show the placeholder: picking a cat adds it and the menu resets. */}
-            <select value="" onChange={(e) => onAdd(e.target.value as CatId)} disabled={available.length === 0} aria-label="Add a cat">
-                <option value="" disabled>{available.length === 0 ? 'All cats added' : 'Add a cat'}</option>
+            <select id={selectId} value="" onChange={(e) => onAdd(e.target.value as CatId)} disabled={available.length === 0}>
+                <option value="" disabled>{available.length === 0 ? 'All cats added' : 'Choose a cat'}</option>
                 {available.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
