@@ -15,10 +15,10 @@ Note on the code: all user actions are deliberately tiny (add, remove, move one 
 | File | Role |
 |---|---|
 | `gallery-commands/GalleryState.ts` | The application state that undo/redo operates on: an **immutable** class holding the ordered cat ids. |
-| `gallery-commands/GalleryCommandEntry.ts` | Abstract command base class (`GalleryCommandEntry`) and abstract subclass `CommandWithoutCachedState`. |
+| `command-history/Command.ts` | The generic Command and Memento patterns over any state type `S`: `Memento<S>`, `FullStateMemento<S>`, abstract `Command<S>` (hand-written inverse) and abstract `CommandByMemento<S, M>` (undo from a memento of the affected part). |
 | `gallery-commands/add-remove-commands.ts` | `AddCatCommand`, `RemoveCatCommand`: commands with hand-written inverses. |
-| `gallery-commands/MoveCatCommand.ts` | `MoveCatCommand`: a command using the default snapshot behavior. |
-| `history.ts` | Pure TypeScript undo/redo core: the immutable `History` class (`execute`, `undo`, `redo`, `nextRedo`, `pruneStep`) and the pruning helpers. No UI code, readable on its own. |
+| `gallery-commands/MoveCatCommand.ts` | `MoveCatCommand` and its slim `MoveCatMemento` (saves only the moved cat and its position). |
+| `command-history/History.ts` | Pure TypeScript undo/redo core: the generic immutable `History<S>` class (`execute`, `undo`, `redo`, `nextRedo`, `pruneStep`) and the pruning helpers. No UI code, readable on its own. |
 | `App.tsx` | Owns the history (`useState<History>` with updater functions like `setHistory(h => h.undo())`), turns UI intents into commands, runs the pruning transition, Ctrl+Z/Y listener. |
 | `view-components/CatToolBar.tsx` | Presentational: add menu, Undo, Redo. |
 | `view-components/Gallery.tsx` | The list: selection, roving tabindex, keyboard shortcuts, focus restoration, flash state. |
@@ -31,26 +31,30 @@ Note on the code: all user actions are deliberately tiny (add, remove, move one 
 ## 3. Undo/redo concepts taught
 
 ### 3.1 Command pattern with one unified history stack
-Every user action is an object extending the abstract `GalleryCommandEntry`; the history only ever deals with that one type. A subclass must define `action(state)`, the change itself, plus `toString()` for the UI. Other hooks:
+The history is generic over the state type `S` (here `GalleryState`). Every user action is an object extending the abstract `Command<S>`; the history only ever deals with that one type. A subclass must define `action(state)`, the change itself, `undo(state)`, and `toString()` for the UI. Other hooks:
 
 | Hook | Meaning |
 |---|---|
 | `action(state)` | The change. Must not mutate `state`. |
-| `do(state)` | Perform/redo. Default = snapshot behavior (below). |
-| `undo(state)` | Reverse. Default = restore the recorded "before" snapshot. |
+| `do(state)` | Perform/redo. Runs `action`. |
+| `undo(state)` | Reverse the change (hand-written, or from a memento in `CommandByMemento`). |
 | `canDo(state)` | Can this entry be applied to this state *right now*? (default true) |
-| `survivesStateChange(state)` | After a *new* user action, may this redo entry stay on the redo stack? |
+| `survivesStateChange(state)` | After a *new* user action, may this redo entry stay on the redo stack? (default true) |
 | `toString()` | Past-tense description shown in the History panel and tooltips. |
 
-### 3.2 Two ways to get undo/redo (and they mix safely)
-1. **Snapshot (memento) style, the default.** Implement only `action`. The base class records the state before and after the first run; undo restores `before`, redo replays `after`. No inverse logic to get wrong, but memory grows with state size and a cached `after` is only valid from the exact state it was recorded against. Example: `MoveCatCommand`.
-2. **Programmer-defined inverse.** Extend `CommandWithoutCachedState` (its `do` just runs `action` each time) and override `undo` by hand. Cheap in memory, but every action needs a correct inverse. The command captures what it needs (which cat, which position). Examples: `AddCatCommand` (undo = remove the cat), `RemoveCatCommand` (undo = re-add at the recorded position; it records the index only on the first run so redo doesn't re-capture).
+### 3.2 Command and Memento patterns, in three flavors (they mix safely)
+1. **Hand-written inverse.** Extend `Command<S>` and implement `undo` yourself. Cheap in memory (the command remembers just which cat and which position), but every action needs a correct inverse. Examples: `AddCatCommand` (undo = remove the cat), `RemoveCatCommand` (undo = re-add at the recorded position; it records the index only on the first run so redo doesn't re-capture).
+2. **Memento of the affected part.** Extend `CommandByMemento<S, M>` and implement `createMemento(state)`, which saves *only the part of the state the action touches*. `Memento<S>` has `applyToState(state)` (put the saved part back, leave the rest alone) and `matchesState(state)` (is that part still as it was?). Example: `MoveCatCommand` saves a `MoveCatMemento` holding just the cat and its original position, so its size does not depend on how many cats there are, and there is no inverse to write.
+3. **Memento of the whole state.** `FullStateMemento<S>` saves the entire state: simplest, but memory grows with the size of the state. It is the baseline the partial memento is compared with.
 
-Mixing is safe because undo is strictly **LIFO**: when an entry is undone, the state is exactly what it was right after that entry ran, so both a position-based inverse and a stored snapshot are valid.
+The memento is taken once, on the first run. Redo runs `action` again on the current state rather than replaying a stored result, so `CommandByMemento` only allows a redo (`canDo`) and only keeps an entry on the redo stack after a new action (`survivesStateChange`) while `matchesState` holds. Because `do` records nothing after its first run, calling it on a simulated state (as pruning does) has no side effects.
+
+Mixing is safe because undo is strictly **LIFO**: when an entry is undone, the state is exactly what it was right after that entry ran, so both a position-based inverse and a stored memento are valid.
+**Trade-off to discuss:** a partial memento assumes the rest of the state is as the command left it. When the history has been made inconsistent (see 3.4), restoring only one cat's position can be wrong where a whole-state snapshot would have been right, and the redo stack can then briefly hold an unreachable entry that the next action prunes.
 
 ### 3.3 Selective redo
 After undoing, a new action normally destroys redo history in simple editors. Here it does not always:
-- On a new action, snapshot entries are dropped unless the current state equals the state they were recorded against (`survivesStateChange` default). Inverse-style commands always survive because they describe an *action* ("add kaliope"), not a *state*.
+- On a new action, memento entries are dropped unless the part of the state their memento covers is still as it was (`matchesState`), so a move survives any change that leaves that cat at its original position. Inverse-style commands always survive because they describe an *action* ("add kaliope"), not a *state*.
 - **Redo runs the most recent entry that can be applied** to the current state (`History.nextRedo()` = `redoStack.findLast(e => e.canDo(gallery))`), not necessarily the top of the stack. Only that entry leaves the redo stack. The Redo button and tooltip use the same function.
 - Skipped entries are shown greyed with a "skipped" badge in the History panel.
 
@@ -93,7 +97,7 @@ The flash is a `<span key={flash}>` overlay; changing `key` remounts it and rest
 
 ## 5. Suggested lecture threads
 1. State as a value: why immutable `GalleryState` makes undo trivial (snapshots) and React cheap (reference equality).
-2. Memento vs. command: implement Move (snapshot) and Add/Remove (inverse); compare memory and correctness.
+2. Memento vs. command: implement Move (memento of the affected part) and Add/Remove (inverse); compare memory (`MoveCatMemento` vs. `FullStateMemento`) and correctness.
 3. LIFO invariant: why mixing strategies is safe.
 4. What should a new action do to the redo stack? Walk through `survivesStateChange`, selective redo, and `canDo`.
 5. Break it: the stale-index scenario in 3.4; discuss rebasing/operational transform.

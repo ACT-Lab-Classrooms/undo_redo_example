@@ -1,9 +1,55 @@
-import {GalleryCommandEntry} from "./GalleryCommandEntry.ts";
+import {CommandByMemento, type Memento} from "../command-history/Command.ts";
 import type {CatId} from "../cats.ts";
 import {GalleryState} from "./GalleryState.ts";
 
-/** Moves a cat one slot up or down. Defines only {@link GalleryCommandEntry.action}, so it relies on the default snapshot undo/redo. */
-export class MoveCatCommand extends GalleryCommandEntry {
+/**
+ * A memento of the part of the gallery a move affects: where one cat was.
+ *
+ * @remarks
+ * It stores a cat and a position, not the list of cats, so its size does not depend on how many cats are in the gallery.
+ */
+export class MoveCatMemento implements Memento<GalleryState> {
+    /** The cat that is moved. */
+    private readonly id: CatId
+    /** 0-based position the cat had before the move (`-1` if it was not in the gallery). */
+    private readonly index: number
+
+    /**
+     * @param id - The cat that is moved.
+     * @param index - The cat's 0-based position before the move.
+     */
+    constructor(id: CatId, index: number) {
+        this.id = id
+        this.index = index
+    }
+
+    /**
+     * Puts the cat back at its original position, leaving the other cats' relative order alone.
+     *
+     * @param state - The current gallery state.
+     * @returns A state with the cat at its original position, or `state` itself if the cat is not in the gallery.
+     */
+    applyToState(state: GalleryState): GalleryState {
+        if (!state.includes(this.id)) return state
+        return state.remove(this.id).state.add(this.id, this.index)
+    }
+
+    /**
+     * @param state - The gallery state to test.
+     * @returns `true` if the cat is at its original position, whatever the other cats are doing.
+     */
+    matchesState(state: GalleryState): boolean {
+        return state.indexOf(this.id) === this.index
+    }
+}
+
+/**
+ * Moves a cat one slot up or down. Undo comes from a {@link MoveCatMemento}, so it needs no hand-written inverse and saves only the moved cat's position.
+ *
+ * @remarks
+ * Redo runs the move again on the current gallery, so it applies whenever the cat is at its original position and can still move in that direction.
+ */
+export class MoveCatCommand extends CommandByMemento<GalleryState, MoveCatMemento> {
     /** The cat to move. */
     private readonly id: CatId
     /** `-1` moves toward the start of the gallery, `1` toward the end. */
@@ -24,6 +70,16 @@ export class MoveCatCommand extends GalleryCommandEntry {
     }
 
     /**
+     * Saves where the cat is before it moves.
+     *
+     * @param state - The gallery state just before the first move.
+     * @returns A memento of the cat's position.
+     */
+    protected override createMemento(state: GalleryState): MoveCatMemento {
+        return new MoveCatMemento(this.id, state.indexOf(this.id))
+    }
+
+    /**
      * Swaps the cat with its neighbor in the move direction.
      *
      * @param state - The current gallery state.
@@ -33,10 +89,21 @@ export class MoveCatCommand extends GalleryCommandEntry {
         const from = state.indexOf(this.id)
         const next = state.move(this.id, this.direction)
         if (next !== state) {
-            this.from = from
-            this.to = from + this.direction
+            // Recorded once, like the memento: the description must not change when the command is re-run on a simulated state.
+            this.from ??= from
+            this.to ??= from + this.direction
         }
         return next
+    }
+
+    /**
+     * The memento only checks the cat's position, so also require that the move is still possible (the cat is not at the edge).
+     *
+     * @param state - The gallery state the command would be applied to.
+     * @returns `true` if the cat is where it was and can move in this direction.
+     */
+    override canDo(state: GalleryState): boolean {
+        return super.canDo(state) && state.move(this.id, this.direction) !== state
     }
 
     /** @returns `"Moved <cat> from position # to #"` once the move has run (1-based positions), or `"Move <cat> up|down"` before it has. */

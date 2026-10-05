@@ -1,18 +1,18 @@
-import type {GalleryCommandEntry} from "../gallery-commands/GalleryCommandEntry.ts";
+import type {Command} from "../command-history/Command.ts";
 import type {GalleryState} from "../gallery-commands/GalleryState.ts";
 
 /** Props for {@link HistorySection}. */
 interface HistorySectionProps {
     /** Entries that can be undone; the last element is the most recent. */
-    undoStack: readonly GalleryCommandEntry[]
+    undoStack: readonly Command<GalleryState>[]
     /** Entries that were undone; the last element is the most recently undone. */
-    redoStack: readonly GalleryCommandEntry[]
+    redoStack: readonly Command<GalleryState>[]
     /** The current gallery, used to tell which redo entries can be applied right now. */
     gallery: GalleryState
     /** The entry a redo would run (see {@link History.nextRedo}), or `undefined` if nothing can be redone. */
-    nextRedo: GalleryCommandEntry | undefined
+    nextRedo: Command<GalleryState> | undefined
     /** The entry the latest redo re-applied, or `null` if the latest action was not a redo. */
-    lastRedone: GalleryCommandEntry | null
+    lastRedone: Command<GalleryState> | null
     /** Whether a background prune of the redo stack is in flight, in which case the stacks may still show stale entries. */
     pending: boolean
 }

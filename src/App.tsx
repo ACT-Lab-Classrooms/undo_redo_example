@@ -4,7 +4,8 @@ import type { CatId } from './cats.ts'
 import { Gallery } from './view-components/Gallery.tsx'
 import { CatToolBar } from './view-components/CatToolBar.tsx'
 import { HistorySection } from './view-components/HistorySection.tsx'
-import { History } from './history.ts'
+import { History } from './command-history/History.ts'
+import { GalleryState } from './gallery-commands/GalleryState.ts'
 import './App.css'
 import {MoveCatCommand} from "./gallery-commands/MoveCatCommand.ts";
 import {AddCatCommand, RemoveCatCommand} from "./gallery-commands/add-remove-commands.ts";
@@ -13,14 +14,14 @@ import {AddCatCommand, RemoveCatCommand} from "./gallery-commands/add-remove-com
  * Root component: owns the history state and composes the toolbar, the gallery and the history panel.
  *
  * @remarks
- * All gallery changes go through {@link History} as {@link GalleryCommandEntry} objects, so every change is undoable.
+ * All gallery changes go through {@link History} as {@link Command} objects, so every change is undoable.
  *
  * @returns The application UI.
  */
 function App() {
   // History is immutable, so every change is a pure updater function: `setHistory((h) => h.undo())`.
-  const [history, setHistory] = useState(History.empty)
-  const { gallery, undoStack, redoStack, pruning, lastRedone } = history
+  const [history, setHistory] = useState(() => History.of(GalleryState.empty))
+  const { state: gallery, undoStack, redoStack, pruning, lastRedone } = history
   // Pruning stale redo entries is an expensive, low-priority task: it runs as transitions so the gallery and buttons never wait for it.
   const [isPruning, startTransition] = useTransition()
 

@@ -1,4 +1,4 @@
-import {CommandWithoutCachedState} from "./GalleryCommandEntry.ts";
+import {Command} from "../command-history/Command.ts";
 import type {CatId} from "../cats.ts";
 import {GalleryState} from "./GalleryState.ts";
 
@@ -8,7 +8,7 @@ import {GalleryState} from "./GalleryState.ts";
  * @remarks
  * Undo removes the cat; redo re-inserts it at the same index. If the gallery has since become shorter the index is clamped, so the cat lands at the end.
  */
-export class AddCatCommand extends CommandWithoutCachedState {
+export class AddCatCommand extends Command<GalleryState> {
     /** The cat to add. */
     private readonly id: CatId
     /** The position the cat is inserted at: given at construction, or the end of the gallery on the first run if none was given. */
@@ -36,7 +36,7 @@ export class AddCatCommand extends CommandWithoutCachedState {
     }
 
     /**
-     * The inverse of {@link CommandWithoutCachedState.do}: removes the cat.
+     * The inverse of {@link Command.do}: removes the cat.
      *
      * @param state - The current gallery state.
      * @returns The gallery state without the cat.
@@ -67,7 +67,7 @@ export class AddCatCommand extends CommandWithoutCachedState {
  * @remarks
  * Undo re-inserts the cat at the remembered index; redo removes it again.
  */
-export class RemoveCatCommand extends CommandWithoutCachedState {
+export class RemoveCatCommand extends Command<GalleryState> {
     /** The cat to remove. */
     private readonly id: CatId
     /** The position the cat is restored to on undo; recorded the first time the command runs. */
@@ -92,7 +92,7 @@ export class RemoveCatCommand extends CommandWithoutCachedState {
     }
 
     /**
-     * The inverse of {@link CommandWithoutCachedState.do}: re-inserts the cat at the remembered index.
+     * The inverse of {@link Command.do}: re-inserts the cat at the remembered index.
      *
      * @param state - The current gallery state.
      * @returns The gallery state with the cat restored.
